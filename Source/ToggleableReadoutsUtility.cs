@@ -58,7 +58,7 @@ namespace ToggleableReadouts
 			numOfCategories = readoutCache.Length;
 		}
 
-		public static void DoReadoutCategorizedFast(ResourceReadout instance, Rect rect)
+		public static void DoReadoutCategorized(ResourceReadout instance, Rect rect)
 		{
 			eventCache = Event.current;
 			eventType = eventCache.type;
@@ -75,14 +75,14 @@ namespace ToggleableReadouts
 			mouseOver = Mouse.IsOver(rect);
 			for (int i = 0; i < numOfCategories; ++i)
 			{
-				DoCategoryFast(list, readoutCache[i], 0, 32);
+				DoCategory(list, readoutCache[i], 0, 32);
 			}
 			
 			GUIClip.Internal_Pop();
 			instance.lastDrawnHeight = Math.Max(list.CurHeight, list.maxHeightColumnSeen);
 		}
 
-		public static void DoCategoryFast(Listing_ResourceReadout list, ReadoutCache readout, int nestLevel, int openMask)
+		public static void DoCategory(Listing_ResourceReadout list, ReadoutCache readout, int nestLevel, int openMask)
 		{
 			TreeNode_ThingCategory node = ((ThingCategoryDef)readout.def).treeNode;
 
@@ -123,24 +123,34 @@ namespace ToggleableReadouts
 
 			//Draw children
 			list.EndLine();
-			if (expanded && readout.things != null) DoCategoryChildrenFast(readout, list, nestLevel + 1, openMask);
+			if (expanded && readout.things != null) DoCategoryChildren(readout, list, nestLevel + 1, openMask);
 		}
 
-		static void DoCategoryChildrenFast(ReadoutCache readout, Listing_ResourceReadout list, int indentLevel, int openMask)
+		static void DoCategoryChildren(ReadoutCache readout, Listing_ResourceReadout list, int indentLevel, int openMask)
 		{
-			for (int i = 0; i < readout.numOfCategories; ++i)
+			try
 			{
-				DoCategoryFast(list, readout.categories[i], indentLevel, openMask);
-			}
+				for (int i = 0; i < readout.numOfCategories; ++i)
+				{
+					DoCategory(list, readout.categories[i], indentLevel, openMask);
+				}
 
-			for (int i = 0; i < readout.numOfThings; i++)
+				for (int i = 0; i < readout.numOfThings; i++)
+				{
+					ReadoutCache entry = readout.things[i];
+					if (entry.value != 0 ) DoThingDef(entry, list, indentLevel + 1);
+				}
+			}
+			//The collections getting oughta sync is not expected to happen, but some mods could throw a few curveballs
+			catch (System.IndexOutOfRangeException)
 			{
-				ReadoutCache entry = readout.things[i];
-				if (entry.value != 0 ) DoThingDefFast(entry, list, indentLevel + 1);
+				ticker = 119;
+				updateNow = true;
+				return;
 			}
 		}
 
-		static void DoThingDefFast(ReadoutCache readout, Listing_ResourceReadout list, int nestLevel)
+		static void DoThingDef(ReadoutCache readout, Listing_ResourceReadout list, int nestLevel)
 		{
 			ThingDef thingDef = readout.def as ThingDef;
 

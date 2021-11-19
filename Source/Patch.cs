@@ -13,7 +13,7 @@ namespace ToggleableReadouts
 	{
 		static public bool Prefix(ResourceReadout __instance, Rect rect)
 		{
-			DoReadoutCategorizedFast(__instance, rect);
+			DoReadoutCategorized(__instance, rect);
 			return false;
 		}
     }
