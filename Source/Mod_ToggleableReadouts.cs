@@ -2,9 +2,7 @@ using Verse;
 using HarmonyLib;
 using UnityEngine;
 using System.Collections.Generic;
-using System;
 using System.Linq;
-using RimWorld;
 using static ToggleableReadouts.ToggleableReadoutsUtility;
 using static ToggleableReadouts.ModSettings_ToggleableReadouts;
  
@@ -25,11 +23,12 @@ namespace ToggleableReadouts
 			inRect.yMax -= 20f;
 			Listing_Standard options = new Listing_Standard();
 			Rect outRect = new Rect(inRect.x, inRect.y, inRect.width, inRect.height);
-			Rect rect = new Rect(0f, 0f, inRect.width - 30f, inRect.height * 1.2f);
+			Rect rect = new Rect(0f, 0f, inRect.width - 30f, (filteredDefs.Count + 4) * 36f);
 			Widgets.BeginScrollView(outRect, ref scrollPos, rect, true);
 			options.Begin(rect);
 
 				options.Label("ToggleableReadouts.Settings.Help".Translate());
+				if (Prefs.DevMode) options.CheckboxLabeled("DevMode: Disable mod", ref disableMod, null);
 				options.GapLine();
 				options.Gap();
 				for (int i = 0; i < filteredDefs.Count; ++i)
@@ -72,17 +71,18 @@ namespace ToggleableReadouts
 			if (Scribe.mode == LoadSaveMode.Saving)
 			{
 				exposedFilteredDefs.Clear();
-				foreach (var def in filteredDefs)
-				{
-					exposedFilteredDefs.Add((def.GetType().Name + "/" + def.defName));
-				}
+				
+				exposedFilteredDefs.AddRange(filteredDefs.Select(def => (def?.GetType()?.Name + "/" + def.defName)));
+				exposedFilteredDefs.AddRange(missingDefs);
 			}
 
 			Scribe_Collections.Look(ref exposedFilteredDefs, "exposedFilteredDefs", LookMode.Value);
 			base.ExposeData();
 		}
 		public static HashSet<string> exposedFilteredDefs;
+		public static HashSet<string> missingDefs;
 		public static HashSet<Def> filteredDefs;
 		public static Vector2 scrollPos;
+		public static bool disableMod;
 	}
 }

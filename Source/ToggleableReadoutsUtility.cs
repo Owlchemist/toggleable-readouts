@@ -23,13 +23,13 @@ namespace ToggleableReadouts
 		public static EventType eventType;
 		static GUIContent guiContent = GUIContent.Temp("");
 		static GUIStyle guiStyle;
-		static int numOfCategories;
 		public static bool mouseOver;
 		static Listing_ResourceReadout list;
 
 		public static void Setup()
 		{
 			filteredDefs = new HashSet<Def>();
+			if (missingDefs == null) missingDefs = new HashSet<string>();
 			if (exposedFilteredDefs == null) exposedFilteredDefs = new HashSet<string>();
 			else
 			{
@@ -38,8 +38,12 @@ namespace ToggleableReadouts
 					string defName = entry.Split('/')[1];
 					string type = entry.Split('/')[0];
 
-					if (type == nameof(ThingDef)) filteredDefs.Add(DefDatabase<ThingDef>.GetNamed(defName, true));
-					else if (type == nameof(ThingCategoryDef)) filteredDefs.Add(DefDatabase<ThingCategoryDef>.GetNamed(defName, true));
+					Def def = null;
+					if (type == nameof(ThingDef)) def = DefDatabase<ThingDef>.GetNamed(defName, false);
+					else if (type == nameof(ThingCategoryDef)) def = DefDatabase<ThingCategoryDef>.GetNamed(defName, false);
+
+					if (def != null) filteredDefs.Add(def);
+					else missingDefs.Add(entry); //Defs from a mod not currently loaded. Save it so it doesn't get erased
 				}
 			}
 
@@ -54,10 +58,70 @@ namespace ToggleableReadouts
 
 		public static void BuildRootCache()
 		{
-			readoutCache = DefDatabase<ThingCategoryDef>.AllDefsListForReading.Where(x => x.resourceReadoutRoot && !filteredDefs.Contains(x)).Select(x => new ReadoutCache(null, 0, x)).ToArray();
-			numOfCategories = readoutCache.Length;
+			if (Prefs.ResourceReadoutCategorized)
+			{
+				readoutCache = DefDatabase<ThingCategoryDef>.AllDefsListForReading.Where(x => x.resourceReadoutRoot && !filteredDefs.Contains(x)).Select(x => new ReadoutCache(null, 0, x)).ToArray();
+			}
+			else
+			{
+				readoutCache = Find.CurrentMap?.resourceCounter.countedAmounts.Where
+					(x => ((x.Value > 0 || x.Key.resourceReadoutAlwaysShow) && !filteredDefs.Contains(x.Key)) ).OrderBy(x => x.Key != ThingDefOf.Silver).Select
+						(y => new ReadoutCache(null, 0, y.Key, y.Value)).ToArray();
+			}
 		}
+		
+		public static void DoReadoutSimple(ResourceReadout list, Rect rect, float outRectHeight)
+		{
+			GUIClip.Internal_Push(rect, vector2zero, vector2zero, false);
+			float currentLineY = 0f;
 
+			//Cahe some things out of the loop
+			eventCache = Event.current;
+			eventType = eventCache.type;
+			mouseOver = Mouse.IsOver(rect);
+			guiStyle.alignment = TextAnchor.MiddleLeft;
+
+			if (++ticker == 120)
+			{
+				BuildRootCache();
+				ticker = 0;
+			}
+			
+			foreach (ReadoutCache readOut in readoutCache)
+			{
+				
+				Rect thingRect = new Rect(0f, currentLineY, 999f, 27f);
+				if (thingRect.m_Height + thingRect.m_YMin >= list.scrollPosition.y && thingRect.m_YMin <= list.scrollPosition.y + outRectHeight)
+				{
+					DrawResourceSimple(thingRect, readOut);
+				}
+				currentLineY += 24f;
+				
+			}
+			Text.Anchor = TextAnchor.UpperLeft;
+			list.lastDrawnHeight = currentLineY;
+			GUIClip.Internal_Pop();
+		}
+		
+		static void DrawResourceSimple(Rect rect, ReadoutCache readOut)
+		{
+			ThingDef thingDef = readOut.def as ThingDef;
+			//Make icon rect
+			Rect iconRect = new Rect(rect) { m_Width = 27 };
+			rect.m_XMin += 34;
+
+			if (mouseOver && Mouse.IsOver(rect))
+			{
+				DrawTextureFast(rect, TexUI.HighlightTex, colorWhite);
+				TooltipHandler.TipRegion(rect, new TipSignal(() => thingDef.LabelCap + ": " + thingDef.description.CapitalizeFirst(), (int)thingDef.shortHash));
+				HandleClicks(eventCache, eventType, rect, thingDef);
+			}
+			DrawTextureFast(iconRect, thingDef.uiIcon, thingDef.graphicData.color);
+
+			guiContent.m_Text = readOut.valueLabel;
+			guiStyle.Internal_Draw_Injected(ref rect, guiContent, false, false, false, false);
+		}
+		
 		public static void DoReadoutCategorized(ResourceReadout instance, Rect rect)
 		{
 			eventCache = Event.current;
@@ -73,9 +137,10 @@ namespace ToggleableReadouts
 			list.map = Current.gameInt.maps[(int)Current.gameInt.currentMapIndex];
 
 			mouseOver = Mouse.IsOver(rect);
-			for (int i = 0; i < numOfCategories; ++i)
+			guiStyle.alignment = TextAnchor.MiddleLeft;
+			foreach (var entry in readoutCache)
 			{
-				DoCategory(list, readoutCache[i], 0, 32);
+				DoCategory(list, entry, 0, 32);
 			}
 			
 			GUIClip.Internal_Pop();
@@ -118,7 +183,6 @@ namespace ToggleableReadouts
 
 			//Draw label
 			guiContent.m_Text = readout.valueLabel;
-			guiStyle.alignment = TextAnchor.MiddleLeft;
 			guiStyle.Internal_Draw_Injected(ref readout.labelRect, guiContent, false, false, false, false);
 
 			//Draw children
@@ -130,15 +194,15 @@ namespace ToggleableReadouts
 		{
 			try
 			{
-				for (int i = 0; i < readout.numOfCategories; ++i)
+				foreach (var entry in readout.categories)
 				{
-					DoCategory(list, readout.categories[i], indentLevel, openMask);
+					DoCategory(list, entry, indentLevel, openMask);
 				}
 
 				for (int i = 0; i < readout.numOfThings; i++)
 				{
 					ReadoutCache entry = readout.things[i];
-					if (entry.value != 0 ) DoThingDef(entry, list, indentLevel + 1);
+					if (entry.value != 0 ) DoThingDef(entry, list);
 				}
 			}
 			//The collections getting oughta sync is not expected to happen, but some mods could throw a few curveballs
@@ -150,7 +214,7 @@ namespace ToggleableReadouts
 			}
 		}
 
-		static void DoThingDef(ReadoutCache readout, Listing_ResourceReadout list, int nestLevel)
+		static void DoThingDef(ReadoutCache readout, Listing_ResourceReadout list)
 		{
 			ThingDef thingDef = readout.def as ThingDef;
 
@@ -209,14 +273,13 @@ namespace ToggleableReadouts
 				{
 					foreach (var entry in readoutCache)
 					{
-						entry.numOfThings -= entry.things.RemoveAll(x => x.def == def);
+						entry.numOfThings -= entry.things?.RemoveAll(x => x.def == def) ?? 0;
 						entry.categories?.ToList().ForEach(x => x.numOfThings -= x.things.RemoveAll(x => x.def == def));
 					}
 				}
 				else if (def is ThingCategoryDef)
 				{
 					readoutCache = readoutCache.Where(x => x.def != def).ToArray();
-					numOfCategories = readoutCache.Length;
 					foreach (var entry in readoutCache)
 					{
 						entry.categories = entry.categories?.Where(x => x.def != def).ToArray();
@@ -227,7 +290,7 @@ namespace ToggleableReadouts
 			LoadedModManager.GetMod<Mod_ToggleableReadouts>().WriteSettings();
 		}
 
-		static int GetCountIn(ThingCategoryDef cat, Listing_ResourceReadout list)
+		public static int GetCountIn(ThingCategoryDef cat, Listing_ResourceReadout list)
 		{
 			int num = 0;
 			for (int i = 0; i < cat.childThingDefs.Count; ++i)
@@ -246,83 +309,6 @@ namespace ToggleableReadouts
 				}
 			}
 			return num;
-		}
-
-		public class ReadoutCache
-		{
-			public ReadoutCache(Listing_ResourceReadout list = null, int nestLevel = 0, Def def = null)
-			{
-				this.def = def;
-				if (list != null) Update(list, nestLevel, def);
-				if (def is ThingCategoryDef)
-				{
-					categories = ((ThingCategoryDef)def).childCategories?.Where
-						(x => (!x.treeNode?.catDef.resourceReadoutRoot ?? false) && !filteredDefs.Contains(x))?.Select
-							(y => new ReadoutCache(null, nestLevel + 1, y)).ToArray();
-					numOfCategories = categories.Length;
-					things = new List<ReadoutCache>();
-				}
-			}
-			public void Update(Listing_ResourceReadout list, int nestLevel, Def def = null, bool expanded = false)
-			{
-				if (def is ThingDef)
-				{
-					value = list.map.resourceCounter.GetCount(def as ThingDef);
-					if (value == 0) return;
-				}
-				else if (def is ThingCategoryDef)
-				{
-					value = GetCountIn(def as ThingCategoryDef, list);
-					if (value == 0) return;
-
-					buttonRect = new Rect(list.XAtIndentLevel(nestLevel), list.curY + list.lineHeight / 2f - 9f, 18f, 18f);
-					controlID = GUIUtility.GetControlID(GUI.s_ButonHash, FocusType.Passive, buttonRect);					
-				}
-				//Printed label
-				valueLabel = value.ToStringCached();
-				
-				//Container
-				containerRect = new Rect(0f, list.curY, list.LabelWidth, list.lineHeight) { xMin = list.XAtIndentLevel(nestLevel) + 18f };
-
-				//Highlight
-				highlightRect = containerRect;
-				highlightRect.width = 80f;
-				highlightRect.yMax -= 3f;
-				highlightRect.yMin += 3f;
-
-				//Icon
-				iconRect = new Rect(containerRect);
-				iconRect.width = (iconRect.height = 28f);
-				iconRect.y = containerRect.y + containerRect.height / 2f - iconRect.height / 2f;
-
-				//Label
-				labelRect = new Rect(containerRect) { xMin = iconRect.xMax + 6f };
-
-				//Handle children defs
-				if (expanded)
-				{
-					IEnumerable<ThingDef> childDefs = ((ThingCategoryDef)def).childThingDefs?.Where
-						(x => x.PlayerAcquirable && (list.map.resourceCounter.GetCount(x) > 0 || things.Any(y => y.def == x)) && !filteredDefs.Contains(x));
-					foreach (var thing in childDefs)
-					{
-						ReadoutCache readout = things.FirstOrDefault(x => x.def == thing);
-						if (readout == null)
-						{
-							readout = new ReadoutCache(list, nestLevel + 1, thing);
-							readout.def = thing;
-							things.Add(readout);
-						}
-						else readout.Update(list, nestLevel + 1, thing);
-						numOfThings = things.Count;
-					}
-				}
-			}
-			public List<ReadoutCache> things;
-			public ReadoutCache[] categories;
-			public Def def;
-			public string valueLabel;
-			public int value, controlID, numOfThings, numOfCategories;
-			public Rect containerRect, highlightRect, iconRect, labelRect, buttonRect;
 		}
 	}
 }
