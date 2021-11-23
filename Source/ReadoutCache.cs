@@ -22,8 +22,8 @@ namespace ToggleableReadouts
 			if (def is ThingCategoryDef)
 			{
 				categories = ((ThingCategoryDef)def).childCategories?.Where
-					(x => (!x.treeNode?.catDef.resourceReadoutRoot ?? false) && !filteredDefs.Contains(x))?.Select
-						(y => new ReadoutCache(null, nestLevel + 1, y)).ToArray();
+					(x => (!x.treeNode?.catDef.resourceReadoutRoot ?? false) && !filteredDefs.Contains(x))?.
+						OrderBy(x => !pinnedDefs.Contains(x)).Select(y => new ReadoutCache(null, nestLevel + 1, y)).ToArray();
 				things = new List<ReadoutCache>();
 			}
 		}
@@ -65,7 +65,7 @@ namespace ToggleableReadouts
 			if (expanded)
 			{
 				IEnumerable<ThingDef> childDefs = ((ThingCategoryDef)def).childThingDefs?.Where
-					(x => x.PlayerAcquirable && (list.map.resourceCounter.GetCount(x) > 0 || things.Any(y => y.def == x)) && !filteredDefs.Contains(x));
+					(x => x.PlayerAcquirable && (list.map.resourceCounter.GetCount(x) > 0 || things.Any(y => y.def == x)) && !filteredDefs.Contains(x)).OrderBy(x => !pinnedDefs.Contains(x));
 				foreach (var thing in childDefs)
 				{
 					ReadoutCache readout = things.FirstOrDefault(x => x.def == thing);

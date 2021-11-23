@@ -30,6 +30,7 @@ namespace ToggleableReadouts
 		{
 			filteredDefs = new HashSet<Def>();
 			if (missingDefs == null) missingDefs = new HashSet<string>();
+			if (pinnedDefs == null) pinnedDefs = new HashSet<Def>();
 			if (exposedFilteredDefs == null) exposedFilteredDefs = new HashSet<string>();
 			else
 			{
@@ -37,12 +38,17 @@ namespace ToggleableReadouts
 				{
 					string defName = entry.Split('/')[1];
 					string type = entry.Split('/')[0];
+					bool pinned = !entry.Split('/').ElementAtOrDefault(2).NullOrEmpty();
 
 					Def def = null;
 					if (type == nameof(ThingDef)) def = DefDatabase<ThingDef>.GetNamed(defName, false);
 					else if (type == nameof(ThingCategoryDef)) def = DefDatabase<ThingCategoryDef>.GetNamed(defName, false);
 
-					if (def != null) filteredDefs.Add(def);
+					if (def != null)
+					{
+						if (pinned) pinnedDefs.Add(def);
+						else filteredDefs.Add(def);
+					}
 					else missingDefs.Add(entry); //Defs from a mod not currently loaded. Save it so it doesn't get erased
 				}
 			}
@@ -60,13 +66,14 @@ namespace ToggleableReadouts
 		{
 			if (Prefs.ResourceReadoutCategorized)
 			{
-				readoutCache = DefDatabase<ThingCategoryDef>.AllDefsListForReading.Where(x => x.resourceReadoutRoot && !filteredDefs.Contains(x)).Select(x => new ReadoutCache(null, 0, x)).ToArray();
+				readoutCache = DefDatabase<ThingCategoryDef>.AllDefsListForReading.Where(x => x.resourceReadoutRoot && !filteredDefs.Contains(x)).
+					OrderBy(x => !pinnedDefs.Contains(x)).Select(x => new ReadoutCache(null, 0, x)).ToArray();
 			}
 			else
 			{
 				readoutCache = Find.CurrentMap?.resourceCounter.countedAmounts.Where
-					(x => ((x.Value > 0 || x.Key.resourceReadoutAlwaysShow) && !filteredDefs.Contains(x.Key)) ).OrderBy(x => x.Key != ThingDefOf.Silver).Select
-						(y => new ReadoutCache(null, 0, y.Key, y.Value)).ToArray();
+					(x => ((x.Value > 0 || x.Key.resourceReadoutAlwaysShow) && !filteredDefs.Contains(x.Key)) ).OrderBy(x => x.Key != ThingDefOf.Silver && !pinnedDefs.
+						Contains(x.Key)).Select(y => new ReadoutCache(null, 0, y.Key, y.Value)).ToArray();
 			}
 		}
 		
@@ -256,10 +263,11 @@ namespace ToggleableReadouts
 		static IEnumerable<FloatMenuOption> HandleRightClick(Def def)
 		{	
 			//Add option to make this pawn a group leader
-			yield return new FloatMenuOption("ToggleableReadouts.Filter".Translate(def.label), delegate()
-			{
-				FilterDef(def);
-			}, MenuOptionPriority.Default, null, null, 0f, null, null, true, 0);
+			yield return new FloatMenuOption("ToggleableReadouts.Filter".Translate(def.label), () => FilterDef(def), MenuOptionPriority.Default, null, null, 0f, null, null, true, 0);
+
+			//Add pinning opion
+			string label = pinnedDefs.Contains(def) ? "ToggleableReadouts.Unpin".Translate(def.label) : "ToggleableReadouts.Pin".Translate(def.label);
+			yield return new FloatMenuOption(label, () => PinDef(def), MenuOptionPriority.Default, null, null, 0f, null, null, true, 0);
 
 			yield break;
 		}
@@ -287,6 +295,26 @@ namespace ToggleableReadouts
 				}
 				ticker = 119;
 			}
+			LoadedModManager.GetMod<Mod_ToggleableReadouts>().WriteSettings();
+		}
+
+		static void PinDef(Def def)
+		{
+			if (pinnedDefs.Contains(def)) pinnedDefs.Remove(def);
+			else pinnedDefs.Add(def);
+			BuildRootCache();
+			if (Prefs.ResourceReadoutCategorized)
+			{
+				readoutCache.ToList().ForEach
+				(x => 
+					{
+						x.things.OrderBy(y => !pinnedDefs.Contains(y.def));
+						x.categories.OrderBy(y => !pinnedDefs.Contains(y.def));
+					}
+				);
+			}
+			updateNow = true;
+			ticker = 119;
 			LoadedModManager.GetMod<Mod_ToggleableReadouts>().WriteSettings();
 		}
 

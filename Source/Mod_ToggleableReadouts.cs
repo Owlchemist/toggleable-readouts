@@ -74,6 +74,7 @@ namespace ToggleableReadouts
 				
 				exposedFilteredDefs.AddRange(filteredDefs.Select(def => (def?.GetType()?.Name + "/" + def.defName)));
 				exposedFilteredDefs.AddRange(missingDefs);
+				exposedFilteredDefs.AddRange(pinnedDefs.Select(def => (def?.GetType()?.Name + "/" + def.defName + "/pinned")));
 			}
 
 			Scribe_Collections.Look(ref exposedFilteredDefs, "exposedFilteredDefs", LookMode.Value);
@@ -82,6 +83,7 @@ namespace ToggleableReadouts
 		public static HashSet<string> exposedFilteredDefs;
 		public static HashSet<string> missingDefs;
 		public static HashSet<Def> filteredDefs;
+		public static HashSet<Def> pinnedDefs;
 		public static Vector2 scrollPos;
 		public static bool disableMod;
 	}
