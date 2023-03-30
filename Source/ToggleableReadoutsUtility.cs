@@ -11,7 +11,8 @@ using static ToggleableReadouts.ModSettings_ToggleableReadouts;
  
 namespace ToggleableReadouts
 {
-    internal static class ToggleableReadoutsUtility
+    [StaticConstructorOnStartup]
+	internal static class ToggleableReadoutsUtility
 	{
 		//Primary
 		static ReadoutCache[] readoutCache;
@@ -24,9 +25,9 @@ namespace ToggleableReadouts
 		static GUIContent guiContent = GUIContent.Temp("");
 		static GUIStyle guiStyle;
 		public static bool mouseOver;
-		static Listing_ResourceReadout list;
+		static Listing_ResourceReadout _list = new Listing_ResourceReadout(null) { nestIndentWidth = 7f, lineHeight = 24f, verticalSpacing = 0 };
 
-		public static void Setup()
+		static ToggleableReadoutsUtility()
 		{
 			filteredDefs = new HashSet<Def>();
 			if (missingDefs == null) missingDefs = new HashSet<string>();
@@ -56,27 +57,42 @@ namespace ToggleableReadouts
 			BuildRootCache();
 			
 			guiStyle = Text.fontStyles[1];
-			list = new Listing_ResourceReadout(null);
-			list.nestIndentWidth = 7f;
-			list.lineHeight = 24f;
-			list.verticalSpacing = 0f;
 		}
-
 		public static void BuildRootCache()
 		{
+			var workingList = new List<ReadoutCache>();
 			if (Prefs.ResourceReadoutCategorized)
 			{
-				readoutCache = DefDatabase<ThingCategoryDef>.AllDefsListForReading.Where(x => x.resourceReadoutRoot && !filteredDefs.Contains(x)).
-					OrderBy(x => !pinnedDefs.Contains(x)).Select(x => new ReadoutCache(null, 0, x)).ToArray();
+				var list = DefDatabase<ThingCategoryDef>.AllDefsListForReading;
+				var length = list.Count;
+				for (int i = 0; i < length; i++)
+				{
+					var def = list[i];
+					if (def.resourceReadoutRoot && !filteredDefs.Contains(def)) 
+					{
+						if(pinnedDefs.Contains(def)) workingList.Insert(0, new ReadoutCache(null, 0, def));
+						else workingList.Add(new ReadoutCache(null, 0, def));
+					}
+				}
 			}
 			else
 			{
-				readoutCache = Find.CurrentMap?.resourceCounter.countedAmounts.Where
-					(x => ((x.Value > 0 || x.Key.resourceReadoutAlwaysShow) && !filteredDefs.Contains(x.Key)) ).OrderBy(x => x.Key != ThingDefOf.Silver && !pinnedDefs.
-						Contains(x.Key)).Select(y => new ReadoutCache(null, 0, y.Key, y.Value)).ToArray();
+				var currentMap = Find.CurrentMap;
+				if (currentMap != null)
+				{
+					foreach (var keyPair in currentMap.resourceCounter.countedAmounts)
+					{
+						var key = keyPair.Key;
+						if ((keyPair.Value > 0 || key.resourceReadoutAlwaysShow) && !filteredDefs.Contains(key))
+						{
+							if (key == ThingDefOf.Silver || pinnedDefs.Contains(key)) workingList.Insert(0, new ReadoutCache(null, 0, key, keyPair.Value));
+							else workingList.Add(new ReadoutCache(null, 0, key, keyPair.Value));
+						}
+					}
+				}
 			}
+			readoutCache = workingList.ToArray();
 		}
-		
 		public static void DoReadoutSimple(ResourceReadout list, Rect rect, float outRectHeight)
 		{
 			GUIClip.Internal_Push(rect, vector2zero, vector2zero, false);
@@ -109,7 +125,6 @@ namespace ToggleableReadouts
 			list.lastDrawnHeight = currentLineY;
 			GUIClip.Internal_Pop();
 		}
-		
 		static void DrawResourceSimple(Rect rect, ReadoutCache readOut)
 		{
 			ThingDef thingDef = readOut.def as ThingDef;
@@ -128,7 +143,6 @@ namespace ToggleableReadouts
 			guiContent.m_Text = readOut.valueLabel;
 			guiStyle.Internal_Draw_Injected(ref rect, guiContent, false, false, false, false);
 		}
-		
 		public static void DoReadoutCategorized(ResourceReadout instance, Rect rect)
 		{
 			eventCache = Event.current;
@@ -136,6 +150,7 @@ namespace ToggleableReadouts
 
 			if (updateNow = ++ticker == 120) ticker = 0;
 
+			Listing_ResourceReadout list = _list;
 			list.listingRect = rect;
 			list.columnWidthInt = list.listingRect.m_Width;
 			list.curX = list.curY = list.maxHeightColumnSeen = 0f;
@@ -145,15 +160,11 @@ namespace ToggleableReadouts
 
 			mouseOver = Mouse.IsOver(rect);
 			guiStyle.alignment = TextAnchor.MiddleLeft;
-			foreach (var entry in readoutCache)
-			{
-				DoCategory(list, entry, 0, 32);
-			}
+			for (int i = 0; i < readoutCache.Length; i++) DoCategory(list, readoutCache[i], 0, 32);
 			
 			GUIClip.Internal_Pop();
 			instance.lastDrawnHeight = Math.Max(list.CurHeight, list.maxHeightColumnSeen);
 		}
-
 		public static void DoCategory(Listing_ResourceReadout list, ReadoutCache readout, int nestLevel, int openMask)
 		{
 			TreeNode_ThingCategory node = ((ThingCategoryDef)readout.def).treeNode;
@@ -196,7 +207,6 @@ namespace ToggleableReadouts
 			list.EndLine();
 			if (expanded && readout.things != null) DoCategoryChildren(readout, list, nestLevel + 1, openMask);
 		}
-
 		static void DoCategoryChildren(ReadoutCache readout, Listing_ResourceReadout list, int indentLevel, int openMask)
 		{
 			try
@@ -220,7 +230,6 @@ namespace ToggleableReadouts
 				return;
 			}
 		}
-
 		static void DoThingDef(ReadoutCache readout, Listing_ResourceReadout list)
 		{
 			ThingDef thingDef = readout.def as ThingDef;
@@ -241,7 +250,6 @@ namespace ToggleableReadouts
 			guiStyle.Internal_Draw_Injected(ref readout.labelRect, guiContent, false, false, false, false);
 			list.EndLine();
 		}
-
 		static void HandleClicks(Event eventCurrent, EventType eventType, Rect rect, Def def)
 		{
 			int mouseButton = eventCurrent.button;
@@ -259,7 +267,6 @@ namespace ToggleableReadouts
 				}
 			}
 		}
-
 		static IEnumerable<FloatMenuOption> HandleRightClick(Def def)
 		{	
 			//Add option to make this pawn a group leader
@@ -271,7 +278,6 @@ namespace ToggleableReadouts
 
 			yield break;
 		}
-
 		static void FilterDef(Def def)
 		{
 			if (filteredDefs.Add(def))
@@ -297,7 +303,6 @@ namespace ToggleableReadouts
 			}
 			LoadedModManager.GetMod<Mod_ToggleableReadouts>().WriteSettings();
 		}
-
 		static void PinDef(Def def)
 		{
 			if (pinnedDefs.Contains(def)) pinnedDefs.Remove(def);
@@ -317,7 +322,6 @@ namespace ToggleableReadouts
 			ticker = 119;
 			LoadedModManager.GetMod<Mod_ToggleableReadouts>().WriteSettings();
 		}
-
 		public static int GetCountIn(ThingCategoryDef cat, Listing_ResourceReadout list)
 		{
 			int num = 0;

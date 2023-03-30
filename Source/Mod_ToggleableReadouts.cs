@@ -14,7 +14,6 @@ namespace ToggleableReadouts
 		{
 			new Harmony(this.Content.PackageIdPlayerFacing).PatchAll();
 			base.GetSettings<ModSettings_ToggleableReadouts>();
-			LongEventHandler.QueueLongEvent(() => Setup(), null, false, null);
 		}
 		
 		public override void DoSettingsWindowContents(Rect inRect)
@@ -28,12 +27,10 @@ namespace ToggleableReadouts
 			options.Begin(rect);
 
 				options.Label("ToggleableReadouts.Settings.Help".Translate());
-				if (Prefs.DevMode) options.CheckboxLabeled("DevMode: Disable mod", ref disableMod, null);
 				options.GapLine();
 				options.Gap();
-				for (int i = 0; i < filteredDefs.Count; ++i)
+				foreach (var def in filteredDefs)
 				{
-					Def def = filteredDefs.ElementAt(i);
 					string defType = "ToggleableReadouts.Settings.Thing".Translate();
 					if (def is ThingCategoryDef) defType = "ToggleableReadouts.Settings.ThingCategoryDef".Translate();
 					
@@ -48,8 +45,6 @@ namespace ToggleableReadouts
 
 				options.End();
 			Widgets.EndScrollView();
-			
-			base.DoSettingsWindowContents(inRect);
 		}
 
 		public override string SettingsCategory()
@@ -68,23 +63,28 @@ namespace ToggleableReadouts
 	{
 		public override void ExposeData()
 		{
-			if (Scribe.mode == LoadSaveMode.Saving)
+			try
 			{
-				exposedFilteredDefs.Clear();
-				
-				exposedFilteredDefs.AddRange(filteredDefs.Select(def => (def?.GetType()?.Name + "/" + def.defName)));
-				exposedFilteredDefs.AddRange(missingDefs);
-				exposedFilteredDefs.AddRange(pinnedDefs.Select(def => (def?.GetType()?.Name + "/" + def.defName + "/pinned")));
+				if (Scribe.mode == LoadSaveMode.Saving)
+				{
+					exposedFilteredDefs.Clear();
+					
+					exposedFilteredDefs.AddRange(filteredDefs.Select(def => (def?.GetType()?.Name + "/" + def.defName)));
+					exposedFilteredDefs.AddRange(missingDefs);
+					exposedFilteredDefs.AddRange(pinnedDefs.Select(def => (def?.GetType()?.Name + "/" + def.defName + "/pinned")));
+				}
 			}
+			catch (System.Exception ex)
+			{
+				Log.Error("[Toggleable Readouts] Error writing mod options:\n" + ex);
+			}
+			
 
 			Scribe_Collections.Look(ref exposedFilteredDefs, "exposedFilteredDefs", LookMode.Value);
 			base.ExposeData();
 		}
-		public static HashSet<string> exposedFilteredDefs;
-		public static HashSet<string> missingDefs;
-		public static HashSet<Def> filteredDefs;
-		public static HashSet<Def> pinnedDefs;
+		public static HashSet<string> exposedFilteredDefs, missingDefs;
+		public static HashSet<Def> filteredDefs, pinnedDefs;
 		public static Vector2 scrollPos;
-		public static bool disableMod;
 	}
 }
