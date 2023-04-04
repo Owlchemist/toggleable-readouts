@@ -19,9 +19,9 @@ namespace ToggleableReadouts
 				valueLabel = value.ToStringCached();
 			}
 			if (list != null) Update(list, nestLevel, def);
-			if (def is ThingCategoryDef)
+			if (def is ThingCategoryDef thingCategoryDef)
 			{
-				categories = ((ThingCategoryDef)def).childCategories?.Where
+				categories = thingCategoryDef.childCategories?.Where
 					(x => (!x.treeNode?.catDef.resourceReadoutRoot ?? false) && !filteredDefs.Contains(x))?.
 						OrderBy(x => !pinnedDefs.Contains(x)).Select(y => new ReadoutCache(null, nestLevel + 1, y)).ToArray();
 				things = new List<ReadoutCache>();
@@ -29,18 +29,50 @@ namespace ToggleableReadouts
 		}
 		public void Update(Listing_ResourceReadout list, int nestLevel, Def def = null, bool expanded = false)
 		{
-			if (def is ThingDef)
+			if (def is ThingDef thingDef)
 			{
-				value = list.map.resourceCounter.GetCount(def as ThingDef);
+				value = list.map.resourceCounter.GetCount(thingDef);
 				if (value == 0) return;
 			}
-			else if (def is ThingCategoryDef)
+			else if (def is ThingCategoryDef thingCategoryDef)
 			{
-				value = GetCountIn(def as ThingCategoryDef, list);
+				value = GetCountIn(thingCategoryDef, list);
 				if (value == 0) return;
 
 				buttonRect = new Rect(list.XAtIndentLevel(nestLevel), list.curY + list.lineHeight / 2f - 9f, 18f, 18f);
 				controlID = GUIUtility.GetControlID(GUI.s_ButonHash, FocusType.Passive, buttonRect);					
+
+				//Handle children defs
+				if (expanded)
+				{
+					var childThingDefs = new List<ThingDef>(thingCategoryDef.childThingDefs);
+					if (childThingDefs != null)
+					{
+						for (int i = childThingDefs.Count; i-- > 0;)
+						{
+							ThingDef thing = childThingDefs[i];
+							if (!thing.PlayerAcquirable || 
+								(list.map.resourceCounter.GetCount(thing) == 0 && !things.Any(y => y.def == thing)) || 
+								filteredDefs.Contains(thing)) childThingDefs.Remove(thing);
+						}
+						childThingDefs.SortBy(x => !pinnedDefs.Contains(x));
+
+						var length = childThingDefs.Count;
+						for (int i = 0; i < length; i++)
+						{
+							var childThingDef = childThingDefs[i];
+							ReadoutCache readout = things.FirstOrDefault(x => x.def == childThingDef);
+							if (readout == null)
+							{
+								readout = new ReadoutCache(list, nestLevel + 1, childThingDef);
+								readout.def = childThingDef;
+								things.Add(readout);
+							}
+							else readout.Update(list, nestLevel + 1, childThingDef);
+							numOfThings = things.Count;
+						}
+					}
+				}
 			}
 			//Printed label
 			valueLabel = value.ToStringCached();
@@ -60,25 +92,6 @@ namespace ToggleableReadouts
 
 			//Label
 			labelRect = new Rect(containerRect) { xMin = iconRect.xMax + 6f };
-
-			//Handle children defs
-			if (expanded)
-			{
-				IEnumerable<ThingDef> childDefs = ((ThingCategoryDef)def).childThingDefs?.Where
-					(x => x.PlayerAcquirable && (list.map.resourceCounter.GetCount(x) > 0 || things.Any(y => y.def == x)) && !filteredDefs.Contains(x)).OrderBy(x => !pinnedDefs.Contains(x));
-				foreach (var thing in childDefs)
-				{
-					ReadoutCache readout = things.FirstOrDefault(x => x.def == thing);
-					if (readout == null)
-					{
-						readout = new ReadoutCache(list, nestLevel + 1, thing);
-						readout.def = thing;
-						things.Add(readout);
-					}
-					else readout.Update(list, nestLevel + 1, thing);
-					numOfThings = things.Count;
-				}
-			}
 		}
 		public List<ReadoutCache> things;
 		public ReadoutCache[] categories;

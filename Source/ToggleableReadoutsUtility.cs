@@ -20,11 +20,8 @@ namespace ToggleableReadouts
 		public static int ticker = 119;
 
 		//Cache
-		public static Event eventCache;
-		public static EventType eventType;
-		static GUIContent guiContent = GUIContent.Temp("");
-		static GUIStyle guiStyle;
-		public static bool mouseOver;
+		static GUIContent _guiContent = GUIContent.Temp("");
+		static GUIStyle _guiStyle;
 		static Listing_ResourceReadout _list = new Listing_ResourceReadout(null) { nestIndentWidth = 7f, lineHeight = 24f, verticalSpacing = 0 };
 
 		static ToggleableReadoutsUtility()
@@ -56,7 +53,7 @@ namespace ToggleableReadouts
 
 			BuildRootCache();
 			
-			guiStyle = Text.fontStyles[1];
+			_guiStyle = Text.fontStyles[1];
 		}
 		public static void BuildRootCache()
 		{
@@ -70,8 +67,9 @@ namespace ToggleableReadouts
 					var def = list[i];
 					if (def.resourceReadoutRoot && !filteredDefs.Contains(def)) 
 					{
-						if(pinnedDefs.Contains(def)) workingList.Insert(0, new ReadoutCache(null, 0, def));
-						else workingList.Add(new ReadoutCache(null, 0, def));
+						var newReadOut = new ReadoutCache(null, 0, def);
+						if (pinnedDefs.Contains(def)) workingList.Insert(0, newReadOut);
+						else workingList.Add(newReadOut);
 					}
 				}
 			}
@@ -99,9 +97,10 @@ namespace ToggleableReadouts
 			float currentLineY = 0f;
 
 			//Cahe some things out of the loop
-			eventCache = Event.current;
-			eventType = eventCache.type;
-			mouseOver = Mouse.IsOver(rect);
+			Event eventCache = Event.current;
+			EventType eventType = eventCache.type;
+			bool mouseOver = Mouse.IsOver(rect);
+			GUIStyle guiStyle = _guiStyle;
 			guiStyle.alignment = TextAnchor.MiddleLeft;
 
 			if (++ticker == 120)
@@ -110,13 +109,13 @@ namespace ToggleableReadouts
 				ticker = 0;
 			}
 			
-			foreach (ReadoutCache readOut in readoutCache)
+			for (int i = 0; i < readoutCache.Length; i++)
 			{
-				
+				ReadoutCache readOut = readoutCache[i];	
 				Rect thingRect = new Rect(0f, currentLineY, 999f, 27f);
 				if (thingRect.m_Height + thingRect.m_YMin >= list.scrollPosition.y && thingRect.m_YMin <= list.scrollPosition.y + outRectHeight)
 				{
-					DrawResourceSimple(thingRect, readOut);
+					DrawResourceSimple(thingRect, readOut, eventCache, eventType, mouseOver, guiStyle, _guiContent);
 				}
 				currentLineY += 24f;
 				
@@ -125,7 +124,7 @@ namespace ToggleableReadouts
 			list.lastDrawnHeight = currentLineY;
 			GUIClip.Internal_Pop();
 		}
-		static void DrawResourceSimple(Rect rect, ReadoutCache readOut)
+		static void DrawResourceSimple(Rect rect, ReadoutCache readOut, Event eventCache, EventType eventType, bool mouseOver, GUIStyle guiStyle, GUIContent guiContent)
 		{
 			ThingDef thingDef = readOut.def as ThingDef;
 			//Make icon rect
@@ -135,7 +134,9 @@ namespace ToggleableReadouts
 			if (mouseOver && Mouse.IsOver(rect))
 			{
 				DrawTextureFast(rect, TexUI.HighlightTex, colorWhite);
-				TooltipHandler.TipRegion(rect, new TipSignal(() => thingDef.LabelCap + ": " + thingDef.description.CapitalizeFirst(), (int)thingDef.shortHash));
+				var label = thingDef.LabelCap + ": " + thingDef.description.CapitalizeFirst();
+				var index = thingDef.index;
+				TooltipHandler.TipRegion(rect, new TipSignal(() => label, index));
 				HandleClicks(eventCache, eventType, rect, thingDef);
 			}
 			DrawTextureFast(iconRect, thingDef.uiIcon, thingDef.graphicData.color);
@@ -145,8 +146,8 @@ namespace ToggleableReadouts
 		}
 		public static void DoReadoutCategorized(ResourceReadout instance, Rect rect)
 		{
-			eventCache = Event.current;
-			eventType = eventCache.type;
+			Event eventCache = Event.current;
+			EventType eventType = eventCache.type;
 
 			if (updateNow = ++ticker == 120) ticker = 0;
 
@@ -158,16 +159,19 @@ namespace ToggleableReadouts
 
 			list.map = Current.gameInt.maps[(int)Current.gameInt.currentMapIndex];
 
-			mouseOver = Mouse.IsOver(rect);
+			bool mouseOver = Mouse.IsOver(rect);
+			GUIStyle guiStyle = _guiStyle;
 			guiStyle.alignment = TextAnchor.MiddleLeft;
-			for (int i = 0; i < readoutCache.Length; i++) DoCategory(list, readoutCache[i], 0, 32);
+
+			for (int i = 0; i < readoutCache.Length; i++) DoCategory(list, readoutCache[i], 0, 32, eventCache, eventType, mouseOver, guiStyle, _guiContent);
 			
 			GUIClip.Internal_Pop();
 			instance.lastDrawnHeight = Math.Max(list.CurHeight, list.maxHeightColumnSeen);
 		}
-		public static void DoCategory(Listing_ResourceReadout list, ReadoutCache readout, int nestLevel, int openMask)
+		public static void DoCategory(Listing_ResourceReadout list, ReadoutCache readout, int nestLevel, int openMask, Event eventCache, EventType eventType, bool mouseOver, GUIStyle guiStyle, GUIContent guiContent)
 		{
-			TreeNode_ThingCategory node = ((ThingCategoryDef)readout.def).treeNode;
+			if (readout.def is not ThingCategoryDef thingCategoryDef) return; //Sanity check
+			TreeNode_ThingCategory node = thingCategoryDef.treeNode;
 
 			//Category expanded?
 			bool expanded = (node.openBits & openMask) != 0;
@@ -205,21 +209,23 @@ namespace ToggleableReadouts
 
 			//Draw children
 			list.EndLine();
-			if (expanded && readout.things != null) DoCategoryChildren(readout, list, nestLevel + 1, openMask);
+			if (expanded && readout.things != null) DoCategoryChildren(readout, list, nestLevel + 1, openMask, eventCache, eventType, mouseOver, guiStyle, guiContent);
 		}
-		static void DoCategoryChildren(ReadoutCache readout, Listing_ResourceReadout list, int indentLevel, int openMask)
+		static void DoCategoryChildren(ReadoutCache readout, Listing_ResourceReadout list, int indentLevel, int openMask, Event eventCache, EventType eventType, bool mouseOver, GUIStyle guiStyle, GUIContent guiContent)
 		{
+			var categories = readout.categories;
+			for (int i = 0; i < categories.Length; i++)
+			{
+				DoCategory(list, categories[i], indentLevel, openMask, eventCache, eventType, mouseOver, guiStyle, guiContent);
+			}
+
 			try
 			{
-				foreach (var entry in readout.categories)
-				{
-					DoCategory(list, entry, indentLevel, openMask);
-				}
-
+				var things = readout.things;
 				for (int i = 0; i < readout.numOfThings; i++)
 				{
-					ReadoutCache entry = readout.things[i];
-					if (entry.value != 0 ) DoThingDef(entry, list);
+					ReadoutCache entry = things[i];
+					if (entry.value != 0 ) DoThingDef(entry, list, eventCache, eventType, mouseOver, guiStyle, guiContent);
 				}
 			}
 			//The collections getting oughta sync is not expected to happen, but some mods could throw a few curveballs
@@ -230,7 +236,7 @@ namespace ToggleableReadouts
 				return;
 			}
 		}
-		static void DoThingDef(ReadoutCache readout, Listing_ResourceReadout list)
+		static void DoThingDef(ReadoutCache readout, Listing_ResourceReadout list, Event eventCache, EventType eventType, bool mouseOver, GUIStyle guiStyle, GUIContent guiContent)
 		{
 			ThingDef thingDef = readout.def as ThingDef;
 
@@ -241,7 +247,9 @@ namespace ToggleableReadouts
 			if (mouseOver && Mouse.IsOver(readout.containerRect))
 			{
 				DrawTextureFast(readout.containerRect, TexUI.HighlightTex, colorWhite);
-				TooltipHandler.TipRegion(readout.containerRect, new TipSignal(() => thingDef.LabelCap + ": " + thingDef.description.CapitalizeFirst(), (int)thingDef.shortHash));
+				var label = thingDef.LabelCap + ": " + thingDef.description.CapitalizeFirst();
+				var index = thingDef.index;
+				TooltipHandler.TipRegion(readout.containerRect, new TipSignal(() => label, index));
 				HandleClicks(eventCache, eventType, readout.containerRect, thingDef);
 			}
 			DrawTextureFast(readout.iconRect, thingDef.uiIcon, thingDef.graphicData.color);
@@ -305,18 +313,17 @@ namespace ToggleableReadouts
 		}
 		static void PinDef(Def def)
 		{
-			if (pinnedDefs.Contains(def)) pinnedDefs.Remove(def);
-			else pinnedDefs.Add(def);
+			if (!pinnedDefs.Remove(def)) pinnedDefs.Add(def);
+			
 			BuildRootCache();
 			if (Prefs.ResourceReadoutCategorized)
 			{
-				readoutCache.ToList().ForEach
-				(x => 
-					{
-						x.things.OrderBy(y => !pinnedDefs.Contains(y.def));
-						x.categories.OrderBy(y => !pinnedDefs.Contains(y.def));
-					}
-				);
+				for (int i = readoutCache.Length; i-- > 0;)
+				{
+					ReadoutCache x = readoutCache[i];
+					x.things.SortBy(y => !pinnedDefs.Contains(y.def));
+					x.categories.OrderBy(y => !pinnedDefs.Contains(y.def));
+				}
 			}
 			updateNow = true;
 			ticker = 119;
@@ -325,20 +332,20 @@ namespace ToggleableReadouts
 		public static int GetCountIn(ThingCategoryDef cat, Listing_ResourceReadout list)
 		{
 			int num = 0;
-			for (int i = 0; i < cat.childThingDefs.Count; ++i)
+			var childThingDefs = cat.childThingDefs;
+			for (int i = childThingDefs.Count; i-- > 0;)
 			{
-				var def = cat.childThingDefs[i];
-				if (filteredDefs.Contains(def)) continue;
-				num += list.map.resourceCounter.GetCount(cat.childThingDefs[i]);
+				var def = childThingDefs[i];
+				if (filteredDefs.Contains(def) || def.resourceReadoutPriority == ResourceCountPriority.Uncounted || !list.map.resourceCounter.countedAmounts.TryGetValue(def, out int value)) continue;
+				num += value;
 			}
-			for (int j = 0; j < cat.childCategories.Count; ++j)
+			var childCategories = cat.childCategories;
+			for (int j = childCategories.Count; j-- > 0;)
 			{
-				if (!cat.childCategories[j].resourceReadoutRoot)
-				{
-					var def = cat.childCategories[j];
-					if (filteredDefs.Contains(def)) continue;
-					num += GetCountIn(cat.childCategories[j], list);
-				}
+				var def = childCategories[j];
+				if (def.resourceReadoutRoot || filteredDefs.Contains(def)) continue;
+				
+				num += GetCountIn(def, list);
 			}
 			return num;
 		}
