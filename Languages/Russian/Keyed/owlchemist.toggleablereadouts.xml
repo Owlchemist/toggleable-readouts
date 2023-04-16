@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+  <ToggleableReadouts.Filter>Отфильтровать {0}</ToggleableReadouts.Filter>
+  <ToggleableReadouts.FilterApplied>{0} был скрыт. Перейдите в настройки мода, если хотите отменить это.</ToggleableReadouts.FilterApplied>
+
+  <ToggleableReadouts.Pin>Закрепить {0}</ToggleableReadouts.Pin>
+  <ToggleableReadouts.Unpin>Открепить {0}</ToggleableReadouts.Unpin>
+
+  <ToggleableReadouts.Settings.Help>Нажмите кнопку, чтобы удалить это из фильтра отображаемых ресурсов</ToggleableReadouts.Settings.Help>
+  <ToggleableReadouts.Settings.Thing>Вещь</ToggleableReadouts.Settings.Thing>
+  <ToggleableReadouts.Settings.ThingCategoryDef>Категория</ToggleableReadouts.Settings.ThingCategoryDef>
+
+</LanguageData>
